@@ -41,16 +41,22 @@ DPM	EQU	11H			;INX数据指针中4位
 DPH	EQU	12H			;INX数据指针高4位
 
 TCTL1	EQU	13H			;Timer1 控制寄存器
+
 ADCCTL	EQU	14H			;ADC 使能与参考电压
 ADCCFG	EQU	15H			;ADC configuration
 ADCPORT	EQU	16H			;ADC PORT CONFIGURATION
-ADCCHL	EQU	17H			;ADC channel selection
+ADCCHN	EQU	17H			;ADC channel selection
 
 PACR	EQU	18H			;PortA 控制寄存器
 PBCR	EQU	19H			;PortB 控制寄存器
 PCCR	EQU	1AH			;PortC 控制寄存器
 PDCR	EQU	1BH			;PortD 控制寄存器
 PECR	EQU	1CH			;PortE 控制寄存器
+
+AD_RET0	EQU	2DH			;ADC 转换结果低2位
+AD_RET1	EQU	2EH			;ADC 转换结果中4位
+AD_RET2	EQU	2FH			;ADC 转换结果高4位
+
 
 
 PPBCR 	EQU 	389H 			;PORTB 口上拉电阻控制寄存器 
@@ -59,6 +65,7 @@ PPBCR 	EQU 	389H 			;PORTB 口上拉电阻控制寄存器
 ;用户自定义寄存器 ($030 ~ $0EF)
 ;*****************************************************
 AC_BAK 	EQU 	30H 			;AC 值备份寄存器
+
 
 ;--------------------------------------
 ; 用于TIMER 定时
@@ -77,7 +84,10 @@ HOUR_CNT2	EQU	3EH
 
 MONTH_CNT	EQU	3FH		;MONTH_CNT0/1 以月为单位计时
 					;当数值达到1年时，即12(0CH)月时，，同时置F_TIME.2，自身清零。
-
+					
+RET0_BAK	EQU	40H		;ADC 转换结果低2位备份
+RET1_BAK	EQU	41H		;ADC 转换结果中4位备份
+RET2_BAK	EQU	42H		;ADC 转换结果高4位备份
 
 
 
@@ -90,7 +100,7 @@ MONTH_CNT	EQU	3FH		;MONTH_CNT0/1 以月为单位计时
 
 	;中断向量表
 	JMP	RESET			;RESET ISP
-	RTNI				;ADC INTERRUPT ISP
+	JMP	ADC_ISP			;ADC INTERRUPT ISP
 	JMP	TIMER0_ISP		;TIMER0 ISP
 	RTNI				;TIMER1 ISP
 	RTNI				;PORTB/D ISP
@@ -157,6 +167,22 @@ TIMER0_ISP_END:
 	LDI 	IE,		0100B 	;打开TIMER0 中断
 	LDA 	AC_BAK,		00H 	;取出AC 值
 	RTNI	
+	
+;*****************************************************
+;ADC 中断服务程序
+;*****************************************************	
+ADC_ISP:
+	STA 	AC_BAK,		00H 	;备份AC 值
+	ANDIM 	IRQ,		0111B 	;清ADC 中断请求标志
+	
+	
+	
+	
+ADC_ISP_END:
+	LDI 	IE,		1000B 	;打开ADC 中断
+	LDA 	AC_BAK,		00H 	;取出AC 值
+	RTNI	
+	
 	
 ;*****************************************************
 ; 主程序
@@ -231,16 +257,59 @@ SYSTEM_INITIAL:
 	LDI 	PORTE,		0FH
 	LDI 	PECR,		0FH 	;设置PortE 作为输出口
 
+	;ADC初始化
+	LDI 	PACR,		0011B 	;设置PortA0/1 作为输入口
+	LDI 	PBCR,		0100B 	;设置PortB2   作为输入口
+	LDI 	ADCCTL,		0001B 	;选择内部参考电压VDD，使能ADC
+	LDI 	ADCCFG,		0100B 	;A/D 时钟tAD=8tOSC, A/D 转换时间= 204tAD
+	LDI	ADCPORT,	0111B	;使用AN0 ~ AN6
+	LDI	ADCCHN,		00H	;选择AN0
+	
+	
 ;--------------------------------------
 MAIN_PRE:
 	LDI 	IRQ,		00H
 	LDI 	IE,		0100B 	;打开Timer0 中断
 
 MAIN:
-	ADI 	F_TIME,		0001B
-	BA0 	HALTMODE 		;未到1s,跳转
-	ANDIM 	F_TIME,		1110B 	;清 "1s 到"标志
-	EORIM	PORTB,		0001B	;翻转PB.0	
+	;ADI 	F_TIME,		0001B
+	;BA0 	HALTMODE 		;未到1s,跳转
+	;ANDIM 	F_TIME,		1110B 	;清 "1s 到"标志
+	;EORIM	PORTB,		0001B	;翻转PB.0	
+	
+	CALL 	ADC_PROC 		;进行A/D 转换
+	CALL 	NEXT_CHN 		;选择下一个通道
+	;CALL 	DATA_PROC 		;根据采到的数据进行处理
+	JMP 	MAIN 			;重复采样
+
+ADC_PROC:	
+	ORIM 	ADCCFG,		1000B 	;启动A/D 转换
+	LDA 	ADCCFG,		00H	;读取AD转换完成标志
+	BA3 	$-1 			;A/D 转换未完成，继续检测
+	LDA 	AD_RET0,	00H 	;读取ADC 结果低2 位
+	STA 	RET0_BAK,	00H 	;保存数据低2 位，以备后用
+	LDA 	AD_RET1,	00H 	;读取ADC 结果中4 位
+	STA 	RET1_BAK,	00H 	;保存数据中4 位，以备后用
+	LDA 	AD_RET2,	00H 	;读取ADC 结果高4 位
+	STA 	RET2_BAK,	00H 	;保存数据高4 位，以备后用
+	RTNI
+	
+NEXT_CHN:
+	SBI 	ADCCHN,		01H
+	BAZ 	NEXT_CHN6 		;第2 个通道AN1，将设定下一个通道为AN6
+	ADIM 	ADCCHN,		01H 	;选择下一个通道
+	BA2	NEXT_CHN0		;将下一通道设定为AN0
+	JMP 	NEXT_CHN_END
+
+NEXT_CHN0:
+	LDI	ADCCHN,		00H	;设定为第0 个通道AN0
+	JMP 	NEXT_CHN_END
+	
+NEXT_CHN6:
+	LDI 	ADCCHN,		06H 	;设定为第7 个通道AN6	
+	
+NEXT_CHN_END:
+	RTNI	
 	
 HALTMODE:
 	NOP
