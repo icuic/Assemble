@@ -84,14 +84,61 @@ HOUR_CNT2	EQU	3EH
 
 MONTH_CNT	EQU	3FH		;MONTH_CNT0/1 以月为单位计时
 					;当数值达到1年时，即12(0CH)月时，，同时置F_TIME.2，自身清零。
-					
-RET0_BAK	EQU	40H		;ADC 转换结果低2位备份
-RET1_BAK	EQU	41H		;ADC 转换结果中4位备份
-RET2_BAK	EQU	42H		;ADC 转换结果高4位备份
 
+DET0_CT		EQU	40H		;ADC 通道0 转换结果个数
+DET1_CT		EQU	41H		;ADC 通道1 转换结果个数
+DET6_CT		EQU	42H		;ADC 通道6 转换结果个数
 
+;------------------------------------------------------------------
+CHN0_RET0_BAK0	EQU	43H		;ADC CHN0 转换结果低2位备份
+CHN0_RET1_BAK0	EQU	44H		;ADC CHN0 转换结果中4位备份
+CHN0_RET2_BAK0	EQU	45H		;ADC CHN0 转换结果高4位备份
 
+CHN0_RET0_BAK1	EQU	46H		;ADC CHN0 转换结果低2位备份
+CHN0_RET1_BAK1	EQU	47H		;ADC CHN0 转换结果中4位备份
+CHN0_RET2_BAK1	EQU	48H		;ADC CHN0 转换结果高4位备份
 
+CHN0_RET0_BAK2	EQU	43H		;ADC CHN0 转换结果低2位备份
+CHN0_RET1_BAK2	EQU	44H		;ADC CHN0 转换结果中4位备份
+CHN0_RET2_BAK2	EQU	45H		;ADC CHN0 转换结果高4位备份
+
+CHN0_RET0_BAK3	EQU	46H		;ADC CHN0 转换结果低2位备份
+CHN0_RET1_BAK3	EQU	47H		;ADC CHN0 转换结果中4位备份
+CHN0_RET2_BAK3	EQU	48H		;ADC CHN0 转换结果高4位备份
+
+;------------------------------------------------------------------
+CHN1_RET0_BAK0	EQU	49H		;ADC CHN1 转换结果低2位备份
+CHN1_RET1_BAK0	EQU	4AH		;ADC CHN1 转换结果中4位备份
+CHN1_RET2_BAK0	EQU	4BH		;ADC CHN1 转换结果高4位备份
+
+CHN1_RET0_BAK1	EQU	4CH		;ADC CHN1 转换结果低2位备份
+CHN1_RET1_BAK1	EQU	4DH		;ADC CHN1 转换结果中4位备份
+CHN1_RET2_BAK1	EQU	4EH		;ADC CHN1 转换结果高4位备份
+
+CHN1_RET0_BAK2	EQU	4FH		;ADC CHN1 转换结果低2位备份
+CHN1_RET1_BAK2	EQU	50H		;ADC CHN1 转换结果中4位备份
+CHN1_RET2_BAK2	EQU	51H		;ADC CHN1 转换结果高4位备份
+
+CHN1_RET0_BAK3	EQU	52H		;ADC CHN1 转换结果低2位备份
+CHN1_RET1_BAK3	EQU	53H		;ADC CHN1 转换结果中4位备份
+CHN1_RET2_BAK3	EQU	54H		;ADC CHN1 转换结果高4位备份
+
+;------------------------------------------------------------------
+CHN6_RET0_BAK0	EQU	55H		;ADC CHN6 转换结果低2位备份
+CHN6_RET1_BAK0	EQU	56H		;ADC CHN6 转换结果中4位备份
+CHN6_RET2_BAK0	EQU	57H		;ADC CHN6 转换结果高4位备份
+
+CHN6_RET0_BAK1	EQU	58H		;ADC CHN6 转换结果低2位备份
+CHN6_RET1_BAK1	EQU	59H		;ADC CHN6 转换结果中4位备份
+CHN6_RET2_BAK1	EQU	5AH		;ADC CHN6 转换结果高4位备份
+
+CHN6_RET0_BAK2	EQU	5BH		;ADC CHN6 转换结果低2位备份
+CHN6_RET1_BAK2	EQU	5CH		;ADC CHN6 转换结果中4位备份
+CHN6_RET2_BAK2	EQU	5DH		;ADC CHN6 转换结果高4位备份
+
+CHN6_RET0_BAK3	EQU	5EH		;ADC CHN6 转换结果低2位备份
+CHN6_RET1_BAK3	EQU	5FH		;ADC CHN6 转换结果中4位备份
+CHN6_RET2_BAK3	EQU	60H		;ADC CHN6 转换结果高4位备份
 
 ;*****************************************************
 ;程序
@@ -164,7 +211,7 @@ J1MS:
 	;--------------------------------------------------------------------------
 
 TIMER0_ISP_END:
-	LDI 	IE,		0100B 	;打开TIMER0 中断
+	LDI 	IE,		1100B 	;打开ADC,Timer0 中断
 	LDA 	AC_BAK,		00H 	;取出AC 值
 	RTNI	
 	
@@ -175,11 +222,182 @@ ADC_ISP:
 	STA 	AC_BAK,		00H 	;备份AC 值
 	ANDIM 	IRQ,		0111B 	;清ADC 中断请求标志
 	
+	LDA	ADCCHN			
+	BAZ	CHN0_VOL_1		;此次为通道0 转换结果
+	SBI	ADCCHN,		01H
+	BAZ	CHN1_VOL_1		;此次为通道1 转换结果	
+	SBI	ADCCHN,		06H
+	BAZ	CHN6_VOL_1		;此次为通道6 转换结果
+	JMP	ADC_ISP_END		;正常情况下不应执行此语句
 	
+;转存通道0 转换结果
+;----------------------------------------------------------------
+CHN0_VOL_1:
+	ADIM 	DET0_CT,	01H 	;次数加一
+	
+	SBI 	DET0_CT,	04H
+	BAZ 	CHN0_VOL_14		;第4个转换结果
+	SBI 	DET0_CT,	03H
+	BAZ 	CHN0_VOL_13		;第3个转换结果
+	SBI 	DET0_CT,	02H
+	BAZ 	CHN0_VOL_12		;第2个转换结果
+
+CHN0_VOL_11:
+	LDA 	AD_RET0,	00H 	;保存第一次A/D 转换结果
+	STA 	CHN0_RET0_BAK0
+	LDA 	AD_RET1,	00H
+	STA 	CHN0_RET1_BAK0
+	LDA 	AD_RET2,	00H
+	STA 	CHN0_RET2_BAK0
+	JMP 	NEXT_CHN	
+
+CHN0_VOL_12:
+	LDA 	AD_RET0,	00H 	;保存第二次A/D 转换结果
+	STA 	CHN0_RET0_BAK1
+	LDA 	AD_RET1,	00H
+	STA 	CHN0_RET1_BAK1
+	LDA 	AD_RET2,	00H
+	STA 	CHN0_RET2_BAK1
+	JMP 	NEXT_CHN
+	
+CHN0_VOL_13:
+	LDA 	AD_RET0,	00H 	;保存第三次A/D 转换结果
+	STA 	CHN0_RET0_BAK2
+	LDA 	AD_RET1,	00H
+	STA 	CHN0_RET1_BAK2
+	LDA 	AD_RET2,	00H
+	STA 	CHN0_RET2_BAK2
+	JMP 	NEXT_CHN	
+	
+CHN0_VOL_14:
+	LDA 	AD_RET0,	00H 	;保存第四次A/D 转换结果
+	STA 	CHN0_RET0_BAK3
+	LDA 	AD_RET1,	00H
+	STA 	CHN0_RET1_BAK3
+	LDA 	AD_RET2,	00H
+	STA 	CHN0_RET2_BAK3
+	JMP 	NEXT_CHN	
+;----------------------------------------------------------------
+
+;转存通道1 转换结果
+;----------------------------------------------------------------
+CHN1_VOL_1:
+	ADIM 	DET1_CT,	01H 	;次数加一
+	
+	SBI 	DET1_CT,	04H
+	BAZ 	CHN1_VOL_14		;第4个转换结果
+	SBI 	DET1_CT,	03H
+	BAZ 	CHN1_VOL_13		;第3个转换结果
+	SBI 	DET1_CT,	02H
+	BAZ 	CHN1_VOL_12		;第2个转换结果
+
+CHN1_VOL_11:
+	LDA 	AD_RET0,	00H 	;保存第一次A/D 转换结果
+	STA 	CHN1_RET0_BAK0
+	LDA 	AD_RET1,	00H
+	STA 	CHN1_RET1_BAK0
+	LDA 	AD_RET2,	00H
+	STA 	CHN1_RET2_BAK0
+	JMP 	NEXT_CHN	
+
+CHN1_VOL_12:
+	LDA 	AD_RET0,	00H 	;保存第二次A/D 转换结果
+	STA 	CHN1_RET0_BAK1
+	LDA 	AD_RET1,	00H
+	STA 	CHN1_RET1_BAK1
+	LDA 	AD_RET2,	00H
+	STA 	CHN1_RET2_BAK1
+	JMP 	NEXT_CHN
+	
+CHN1_VOL_13:
+	LDA 	AD_RET0,	00H 	;保存第三次A/D 转换结果
+	STA 	CHN1_RET0_BAK2
+	LDA 	AD_RET1,	00H
+	STA 	CHN1_RET1_BAK2
+	LDA 	AD_RET2,	00H
+	STA 	CHN1_RET2_BAK2
+	JMP 	NEXT_CHN	
+	
+CHN1_VOL_14:
+	LDA 	AD_RET0,	00H 	;保存第四次A/D 转换结果
+	STA 	CHN1_RET0_BAK3
+	LDA 	AD_RET1,	00H
+	STA 	CHN1_RET1_BAK3
+	LDA 	AD_RET2,	00H
+	STA 	CHN1_RET2_BAK3
+	JMP 	NEXT_CHN	
+;----------------------------------------------------------------
+	
+;转存通道6 转换结果
+;----------------------------------------------------------------
+CHN6_VOL_1:
+	ADIM 	DET6_CT,	01H 	;次数加一
+	
+	SBI 	DET6_CT,	04H
+	BAZ 	CHN6_VOL_14		;第4个转换结果
+	SBI 	DET6_CT,	03H
+	BAZ 	CHN6_VOL_13		;第3个转换结果
+	SBI 	DET6_CT,	02H
+	BAZ 	CHN6_VOL_12		;第2个转换结果
+
+CHN6_VOL_11:
+	LDA 	AD_RET0,	00H 	;保存第一次A/D 转换结果
+	STA 	CHN6_RET0_BAK0
+	LDA 	AD_RET1,	00H
+	STA 	CHN6_RET1_BAK0
+	LDA 	AD_RET2,	00H
+	STA 	CHN6_RET2_BAK0
+	JMP 	NEXT_CHN	
+
+CHN6_VOL_12:
+	LDA 	AD_RET0,	00H 	;保存第二次A/D 转换结果
+	STA 	CHN6_RET0_BAK1
+	LDA 	AD_RET1,	00H
+	STA 	CHN6_RET1_BAK1
+	LDA 	AD_RET2,	00H
+	STA 	CHN6_RET2_BAK1
+	JMP 	NEXT_CHN
+	
+CHN6_VOL_13:
+	LDA 	AD_RET0,	00H 	;保存第三次A/D 转换结果
+	STA 	CHN6_RET0_BAK2
+	LDA 	AD_RET1,	00H
+	STA 	CHN6_RET1_BAK2
+	LDA 	AD_RET2,	00H
+	STA 	CHN6_RET2_BAK2
+	JMP 	NEXT_CHN	
+	
+CHN6_VOL_14:
+	LDA 	AD_RET0,	00H 	;保存第四次A/D 转换结果
+	STA 	CHN1_RET0_BAK3
+	LDA 	AD_RET1,	00H
+	STA 	CHN1_RET1_BAK3
+	LDA 	AD_RET2,	00H
+	STA 	CHN1_RET2_BAK3
+	JMP 	NEXT_CHN	
+;----------------------------------------------------------------	
+	
+;----------------------------------------------------------------	
+NEXT_CHN:
+	SBI 	ADCCHN,		01H
+	BAZ 	NEXT_CHN6 		;第2 个通道AN1，将设定下一个通道为AN6
+	ADIM 	ADCCHN,		01H 	;选择下一个通道
+	BA2	NEXT_CHN0		;将下一通道设定为AN0
+	JMP 	ADC_ISP_END
+
+NEXT_CHN0:
+	LDI	ADCCHN,		00H	;设定为第0 个通道AN0
+	JMP 	ADC_ISP_END
+	
+NEXT_CHN6:
+	LDI 	ADCCHN,		06H 	;设定为第7 个通道AN6	
+;----------------------------------------------------------------	
 	
 	
 ADC_ISP_END:
-	LDI 	IE,		1000B 	;打开ADC 中断
+	ORIM 	ADCCFG,		1000B 	;启动A/D 转换
+
+	LDI 	IE,		1100B 	;打开ADC,Timer0 中断
 	LDA 	AC_BAK,		00H 	;取出AC 值
 	RTNI	
 	
@@ -256,60 +474,32 @@ SYSTEM_INITIAL:
 	LDI 	PBCR,		0FH 	;设置PortB 作为输出口
 	LDI 	PORTE,		0FH
 	LDI 	PECR,		0FH 	;设置PortE 作为输出口
+	LDI	PCCR,		0001H	;设置PortC.0 作为输出口
 
 	;ADC初始化
-	LDI 	PACR,		0011B 	;设置PortA0/1 作为输入口
-	LDI 	PBCR,		0100B 	;设置PortB2   作为输入口
+	LDI 	PACR,		0000B 	;设置PortA0/1 作为输入口
+	LDI 	PBCR,		0000B 	;设置PortB2   作为输入口
 	LDI 	ADCCTL,		0001B 	;选择内部参考电压VDD，使能ADC
 	LDI 	ADCCFG,		0100B 	;A/D 时钟tAD=8tOSC, A/D 转换时间= 204tAD
 	LDI	ADCPORT,	0111B	;使用AN0 ~ AN6
 	LDI	ADCCHN,		00H	;选择AN0
-	
+	ORIM 	ADCCFG,		1000B 	;启动A/D 转换
 	
 ;--------------------------------------
 MAIN_PRE:
 	LDI 	IRQ,		00H
-	LDI 	IE,		0100B 	;打开Timer0 中断
+	LDI 	IE,		1100B 	;打开ADC,Timer0 中断
 
 MAIN:
-	;ADI 	F_TIME,		0001B
-	;BA0 	HALTMODE 		;未到1s,跳转
-	;ANDIM 	F_TIME,		1110B 	;清 "1s 到"标志
-	;EORIM	PORTB,		0001B	;翻转PB.0	
+	ADI 	F_TIME,		0001B
+	BA0 	HALTMODE 		;未到1s,跳转
 	
-	CALL 	ADC_PROC 		;进行A/D 转换
-	CALL 	NEXT_CHN 		;选择下一个通道
-	;CALL 	DATA_PROC 		;根据采到的数据进行处理
-	JMP 	MAIN 			;重复采样
-
-ADC_PROC:	
-	ORIM 	ADCCFG,		1000B 	;启动A/D 转换
-	LDA 	ADCCFG,		00H	;读取AD转换完成标志
-	BA3 	$-1 			;A/D 转换未完成，继续检测
-	LDA 	AD_RET0,	00H 	;读取ADC 结果低2 位
-	STA 	RET0_BAK,	00H 	;保存数据低2 位，以备后用
-	LDA 	AD_RET1,	00H 	;读取ADC 结果中4 位
-	STA 	RET1_BAK,	00H 	;保存数据中4 位，以备后用
-	LDA 	AD_RET2,	00H 	;读取ADC 结果高4 位
-	STA 	RET2_BAK,	00H 	;保存数据高4 位，以备后用
-	RTNI
+	ADI 	F_TIME,		0001B
+	BA0	MAIN			;未到1s,跳转
 	
-NEXT_CHN:
-	SBI 	ADCCHN,		01H
-	BAZ 	NEXT_CHN6 		;第2 个通道AN1，将设定下一个通道为AN6
-	ADIM 	ADCCHN,		01H 	;选择下一个通道
-	BA2	NEXT_CHN0		;将下一通道设定为AN0
-	JMP 	NEXT_CHN_END
-
-NEXT_CHN0:
-	LDI	ADCCHN,		00H	;设定为第0 个通道AN0
-	JMP 	NEXT_CHN_END
+	ANDIM 	F_TIME,		1110B 	;清 "1s 到"标志
+	EORIM	PORTC,		0001B	;翻转PC.0	
 	
-NEXT_CHN6:
-	LDI 	ADCCHN,		06H 	;设定为第7 个通道AN6	
-	
-NEXT_CHN_END:
-	RTNI	
 	
 HALTMODE:
 	NOP
