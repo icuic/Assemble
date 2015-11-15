@@ -1,0 +1,77 @@
+[File Count]
+Count=1
+[Device]
+Device=69P48
+ReservedRAM=13
+[OSC]
+Source=2
+Frequency=4000.000
+[SimulationMode]
+LcdFile=
+LcdFlag=0 0 0 0 0
+LcdRun=0 0 0 0 0
+VirtualDevice=0 0 0 0 0 0
+VirtualOscilloscopeFlag=2 2 2 2 6
+VirtualOscilloscopePin=:::                  
+VirtualOscilloscope=0 0 0 0 0
+Mode=1
+CodeOptionHigh=0
+CodeOptionLow=0
+VirtualDeviceFile=svd5.vd
+[OSCX]
+Frequency=455.000
+[Files]
+File0=FireLight.asm|3 26 1032 26 349
+OpenFileCounts=1
+[ProjectFiles]
+File0=FireLight.asm
+[Watch0]
+Count=4
+Watch0=DPL 0
+Watch1=DPM 0
+Watch2=DPH 0
+Watch3=PORTB 0
+Watch4=CNT0 0
+Watch5=CNT1 0
+Watch6=SEC_CNT0 0
+Watch7=SEC_CNT1 0
+Watch8=SEC_CNT2 0
+Watch9=HOUR_CNT0 0
+Watch10=HOUR_CNT1 0
+Watch11=HOUR_CNT2 0
+Watch12=MONTH_CNT 0
+[Watch1]
+Count=0
+[Watch2]
+Count=0
+[Watch3]
+Count=0
+[Break]
+Buffer=0
+Trigger=0
+Count=2
+Break0=0 165 1
+Break1=0 215 1
+[MultiBreakpoint]
+bSet=0
+[Trig]
+Count=0
+[Trace]
+Type=0
+Begin=0
+End=0
+[ProjectInfo]
+ProjectInfo_0=FireLight
+ProjectInfo_1=
+ProjectInfo_2=69P48
+ProjectInfo_3=Internal, 4000.000KHz
+ProjectInfo_4=
+ProjectInfo_5=2015-10-11, 10:58:07
+ProjectInfo_6=2015-11-15, 10:47:24
+ProjectInfo_7=
+ProjectInfo_8=
+ProjectInfo_9=D:\Projects\FireLight\Project\FireLight.obj
+ProjectInfo_10=0x54A0
+ProjectInfo_11=
+[ProjectMode]
+Mode=1
