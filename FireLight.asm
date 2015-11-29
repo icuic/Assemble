@@ -58,17 +58,25 @@ AD_RET1	EQU	2EH			;ADC 转换结果中4位
 AD_RET2	EQU	2FH			;ADC 转换结果高4位
 
 
-
+PPACR 	EQU 	388H 			;PORTA 口上拉电阻控制寄存器 
 PPBCR 	EQU 	389H 			;PORTB 口上拉电阻控制寄存器 
+PPCCR 	EQU 	38AH 			;PORTC 口上拉电阻控制寄存器 
+PPDCR 	EQU 	38BH 			;PORTD 口上拉电阻控制寄存器 
+PPECR 	EQU 	38CH 			;PORTE 口上拉电阻控制寄存器 
 
 ;*****************************************************
 ;用户自定义寄存器 ($030 ~ $0EF)
 ;*****************************************************
 AC_BAK 	EQU 	30H 			;AC 值备份寄存器
 
-
+SIMULATE_STA	EQU	31H		;bit0 = 1, 进入"模拟停电"状态
+					;bit1 = 1, 进入"手动月检"状态
+					;bit1 = 1, 进入"手动年检"状态
+					;bit1 = 1, 进入"关断应急输出"状态
+					
 ;--------------------------------------
 ; 用于TIMER 定时
+F_BUTTON	EQU	35H		;供按键检测使用。bit0=1, 496ms 到;
 F_TIME 		EQU 	36H 		;bit0=1, 1s 到; bit1=1, 1月到; bit2=1, 1年到。
 
 CNT0 		EQU 	37H 		;CNT1,CNT0组成的8BIT数据达到125时，即Timer0产生125次中断后，表示1S计时已到
@@ -140,6 +148,19 @@ CHN6_RET0_BAK3	EQU	5EH		;ADC CHN6 转换结果低2位备份
 CHN6_RET1_BAK3	EQU	5FH		;ADC CHN6 转换结果中4位备份
 CHN6_RET2_BAK3	EQU	60H		;ADC CHN6 转换结果高4位备份
 
+;按键相关寄存器
+DELAY_TIMER2	EQU	61H		;延时子程序使用
+DELAY_TIMER1	EQU	62H		;延时子程序使用
+DELAY_TIMER0	EQU	63H		;延时子程序使用
+CLEAR_AC 	EQU 	64H 		;清除累加器A 值用寄存器
+TEMP 		EQU 	65H 		;临时寄存器
+
+CNT0_496MS	EQU	66H		;用于定时496MS
+CNT1_496MS	EQU	67H
+
+BTN_PRE_STA	EQU	68H		;bit0储存上一次按键状态,0:按下,1:未按下
+BTN_PRESS_CNT	EQU	69H		;按键按下时长，单位为496ms
+
 ;*****************************************************
 ;程序
 ;*****************************************************
@@ -159,7 +180,19 @@ TIMER0_ISP:
 	STA 	AC_BAK,		00H 	;备份AC 值
 	ANDIM 	IRQ,		1011B 	;清TIMER0 中断请求标志
 	
-J1MS:
+J_496MS:
+	;--------------------------------------------------------------------------
+	SBIM 	CNT0_496MS,	01H	;每次Timer0中断产生后，将CNT0_496MS减1
+	LDI	TBR,		00H	;将累加器A 清0
+	SBCM	CNT1_496MS		;每次CNT0-1产生借位时，将CNT1_496MS减1
+	BC	J1MS			;如果未产生借位，则表示200MS还未计满
+
+	LDI 	CNT0_496MS,	0DH 	;重置496ms 计数器,496 = 8 * 62
+	LDI 	CNT1_496MS,	03H 	;重置496ms 计数器
+	
+	ORIM 	F_BUTTON,	0001B 	;设置 "496ms 到"标志
+
+J1MS:	
 	;--------------------------------------------------------------------------
 	SBIM 	CNT0,		01H	;每次Timer0中断产生后，将CNT0减1
 	BC 	TIMER0_ISP_END 		;CNT0仍大于0, 则结束ISP
@@ -392,7 +425,7 @@ NEXT_CHN0:
 NEXT_CHN6:
 	LDI 	ADCCHN,		06H 	;设定为第7 个通道AN6	
 ;----------------------------------------------------------------	
-	
+
 	
 ADC_ISP_END:
 	ORIM 	ADCCFG,		1000B 	;启动A/D 转换
@@ -408,8 +441,16 @@ ADC_ISP_END:
 RESET:
 	NOP	
 	
-
+	;LDI	70H,		07H
+	;LDI	71H,		01H
 	
+LOOP:	
+	;SBIM	70H, 		01H
+	;LDI	TBR,		00H
+	;SBCM	71H
+	;BC 	LOOP
+	
+	LDI 	IE,		0000B
 	
  	NOP
 	NOP
@@ -424,7 +465,7 @@ POWER_RESET:
 POWER_RESET_1:
 	LDI 	INX,		00H	;向DPH,DPM,DPL组成的地址处写0
 	ADIM 	DPL,		01H
-	LDI 	TBR,		00H
+	LDI 	TBR,		00H	;将累加器A 清0
 	ADCM 	DPM,		00H
 	BA3 	POWER_RESET_2
 	JMP 	POWER_RESET_3
@@ -475,6 +516,10 @@ SYSTEM_INITIAL:
 	LDI 	PORTE,		0FH
 	LDI 	PECR,		0FH 	;设置PortE 作为输出口
 	LDI	PCCR,		0001H	;设置PortC.0 作为输出口
+	
+	LDI 	PDCR,		1110B 	;设置PD.0为输入，PD.3为输出
+	LDI	TBR,		0001B	;打开PD.0 内部上拉电阻
+	STA	PPDCR
 
 	;ADC初始化
 	LDI 	PACR,		0000B 	;设置PortA0/1 作为输入口
@@ -484,6 +529,11 @@ SYSTEM_INITIAL:
 	LDI	ADCPORT,	0111B	;使用AN0 ~ AN6
 	LDI	ADCCHN,		00H	;选择AN0
 	ORIM 	ADCCFG,		1000B 	;启动A/D 转换
+
+	;按键相关
+	LDI	CNT0_496MS,	0DH	;初始化496ms 计数器,496 = 8 * 62
+	LDI	CNT0_496MS,	03H	;初始化496ms 计数器
+	LDI	BTN_PRE_STA,	01H	;初始化上一次没有按键
 	
 ;--------------------------------------
 MAIN_PRE:
@@ -491,8 +541,10 @@ MAIN_PRE:
 	LDI 	IE,		1100B 	;打开ADC,Timer0 中断
 
 MAIN:
+	CALL	KEY_CHECK_PROCESS
+
 	ADI 	F_TIME,		0001B
-	BA0 	HALTMODE 		;未到1s,跳转
+	;BA0 	HALTMODE 		;未到1s,跳转
 	
 	ADI 	F_TIME,		0001B
 	BA0	MAIN			;未到1s,跳转
@@ -513,5 +565,112 @@ HALTMODE:
 	NOP
 
 
+;***********************************************************
+; 按键扫描及处理部分
+;***********************************************************
+KEY_CHECK_PROCESS:
+	LDI 	PDCR,		1110B 	;设置PD.0 为输入，PD.3 为输出
+	
+KEY_CHECK:
+	ADI	F_BUTTON,	0001B	;
+	BA0	NOT_CHECK
+
+	
+	CALL 	DELAY_5MS 		;消除按键抖动
+	
+	LDA 	PORTD,		00H 	;读取PD 口状态
+	STA 	TEMP,		00H 	;把PD 口状态存到TEMP 寄存器中
+	CALL 	DELAY_5MS 		;消除按键抖动
+	
+	LDA 	PORTD,		00H 	;读取PD 口状态
+	SUB 	TEMP,		00H 	;比较读取PD.0 口状态值，不相等则错误
+	BA0 	KEY_ERROR
+	CALL 	DELAY_5MS 		;消除按键抖动
+	
+	LDA 	PORTD,		00H 	;读取PD 口状态
+	SUB 	TEMP,		00H 	;比较读取PD.0 口状态值，不相等则错误
+	BA0 	KEY_ERROR
+	
+	LDA 	TEMP		 	;将TEMP 中的数据储存至累加器A 中
+	BA0	NO_KEY_PRESSED		;没有检测到按键
+	
+	JMP	KEY_PRESSED		;检测到有按键按下
+
+NO_KEY_PRESSED:
+	LDA	BTN_PRE_STA		;将上一次按键状态载入累加器A 中
+	ADD	TEMP			;TEMP + A -> A
+	BA0	KEY_RELEASED		;上一次按下，本次未按下
+	
+	JMP 	KEY_CHECK_PROCESS_OVER	;上一次未按下，本次也未按下
+
+KEY_RELEASED:
+
+	;根据按键被按下的时长T，决定进入以下何种状态:
+	; T < 3s      -- "模拟停电"
+	; 3s < T < 5s -- "手动月检"
+	; 5s < T < 7s -- "手动年检"
+	; T > 7s      -- "关断应急输出"
+	SBI	BTN_PRESS_CNT,	06H	;
+	BNC	LESS_3S			;按键持续时长小于3S, 6.04 * 496ms = 3s
+	SBI	BTN_PRESS_CNT,	0AH	;
+	BNC	LESS_5S			;按键持续时长小于5S, 10.08 * 496ms = 5s
+	SBI	BTN_PRESS_CNT,	0EH	;
+	BNC	LESS_7S			;按键持续时长小于7S, 14.11 * 496ms = 7s
+
+MORE_7S:
+	ORIM	SIMULATE_STA,	0001B	;进入"关断应急输出"状态
+	JMP	RELEASED_OVER	
+LESS_3S:
+	ORIM	SIMULATE_STA,	0001B	;进入"模拟停电"状态
+	JMP	RELEASED_OVER
+
+LESS_5S:
+	ORIM	SIMULATE_STA,	0010B	;进入"手动月检"状态
+	JMP	RELEASED_OVER
+LESS_7S:
+	ORIM	SIMULATE_STA,	0010B	;进入"手动年检"状态
+	JMP	RELEASED_OVER
+	
+RELEASED_OVER:
+	LDI	BTN_PRESS_CNT,	00H	;将BTN_PRESS_CNT 清0
+	JMP	KEY_CHECK_PROCESS_OVER
+
+KEY_PRESSED:
+	SBI	BTN_PRESS_CNT,  0FH	;比较BTN_PRESS_CNT 与 0x0F 的大小
+	BC	KEY_CHECK_PROCESS_OVER	;如果BTN_PRESS_CNT已经累加至0x0F，则不再累加
+	ADI	BTN_PRESS_CNT,	01H	;496MS计时次数加1
+	JMP 	KEY_CHECK_PROCESS_OVER
+	
+KEY_ERROR: 				;错误键值处理
+	JMP 	KEY_CHECK_PROCESS_OVER
+	
+KEY_CHECK_PROCESS_OVER: 		;按键扫描及处理结束，返回
+	ANDIM	TEMP,		0001H	;
+	STA	BTN_PRE_STA		;TEMP -> BTN_PRE_STA
+	
+	ANDIM	F_BUTTON,	1110B	;
+	
+NOT_CHECK:	
+	RTNI
+;************************************************************
+; 延时5 毫秒子程序
+;************************************************************
+DELAY_5MS:
+	LDI 	DELAY_TIMER2,	03H 	;设置初始值
+	LDI 	DELAY_TIMER1,	03H
+	LDI 	DELAY_TIMER0,	0CH
+
+DELAY_5MS_LOOP:
+	SBIM 	DELAY_TIMER0,	01H 	;每次减1
+	LDI 	CLEAR_AC,	00H
+	SBCM 	DELAY_TIMER1,	00H
+	LDI 	CLEAR_AC,	00H
+	SBCM 	DELAY_TIMER2,	00H
+	BC 	DELAY_5MS_LOOP
+	
+	RTNI
+
 
 	END
+
+
