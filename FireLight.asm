@@ -53,6 +53,24 @@ PCCR	EQU	1AH			;PortC 控制寄存器
 PDCR	EQU	1BH			;PortD 控制寄存器
 PECR	EQU	1CH			;PortE 控制寄存器
 
+PWMC0	EQU	20H			;PWM0 控制寄存器
+PWMC1	EQU	21H			;PWM1 控制寄存器
+
+PWMP00	EQU	22H			;PWM0 周期控制寄存器低4位
+PWMP01	EQU	23H			;PWM0 周期控制寄存器高4位
+
+PWMD00	EQU	24H			;PWM0 占空比控制寄存器低2位
+PWMD01	EQU	25H			;PWM0 占空比控制寄存器中4位
+PWMD02	EQU	26H			;PWM0 占空比控制寄存器高4位
+
+PWMP10	EQU	27H			;PWM1 周期控制寄存器低4位
+PWMP11	EQU	28H			;PWM1 周期控制寄存器高4位
+
+PWMD10	EQU	29H			;PWM1 占空比控制寄存器低2位
+PWMD11	EQU	2AH			;PWM1 占空比控制寄存器中4位
+PWMD12	EQU	2BH			;PWM1 占空比控制寄存器高4位
+
+
 AD_RET0	EQU	2DH			;ADC 转换结果低2位
 AD_RET1	EQU	2EH			;ADC 转换结果中4位
 AD_RET2	EQU	2FH			;ADC 转换结果高4位
@@ -71,8 +89,13 @@ AC_BAK 	EQU 	30H 			;AC 值备份寄存器
 
 SIMULATE_STA	EQU	31H		;bit0 = 1, 进入"模拟停电"状态
 					;bit1 = 1, 进入"手动月检"状态
-					;bit1 = 1, 进入"手动年检"状态
-					;bit1 = 1, 进入"关断应急输出"状态
+					;bit2 = 1, 进入"手动年检"状态
+					;bit3 = 1, 进入"关断应急输出"状态
+
+NORMAL_STA	EQU	32H		;bit0 = 1, 当前处于"主电"状态
+ABNORMAL_STA	EQU	33H		;bit0 = 1, 当前处于"停电"或"模拟停电"状态
+					;bit1 = 1, 当前处于"月检"或"手动月检"状态
+					;bit2 = 1, 当前处于"年检"或"手动年检"状态
 					
 ;--------------------------------------
 ; 用于TIMER 定时
@@ -511,29 +534,55 @@ SYSTEM_INITIAL:
 		
 
 	;I/O 口初始化
+	LDI 	PORTA,		00H
+	LDI 	PACR,		00H 	;设置PortA 作为输入口
+	
 	LDI 	PORTB,		00H
-	LDI 	PBCR,		0FH 	;设置PortB 作为输出口
-	LDI 	PORTE,		0FH
-	LDI 	PECR,		0FH 	;设置PortE 作为输出口
-	LDI	PCCR,		0001H	;设置PortC.0 作为输出口
+	LDI 	PBCR,		00H 	;设置PortB 作为输入口
+
+	LDI	PORTC,		00H
+	LDI	PCCR,		0FH	;设置PortC.0/PortC.1/PortC.2/PortC.3 作为输出
 	
 	LDI 	PDCR,		1110B 	;设置PD.0为输入，PD.3为输出
 	LDI	TBR,		0001B	;打开PD.0 内部上拉电阻
 	STA	PPDCR
 
+	LDI 	PORTE,		00H
+	LDI 	PECR,		0FH 	;设置PortE 作为输出口
+
 	;ADC初始化
 	LDI 	PACR,		0000B 	;设置PortA0/1 作为输入口
-	LDI 	PBCR,		0000B 	;设置PortB2   作为输入口
+	LDI 	PBCR,		0000B 	;设置PortB2/3 作为输入口
 	LDI 	ADCCTL,		0001B 	;选择内部参考电压VDD，使能ADC
 	LDI 	ADCCFG,		0100B 	;A/D 时钟tAD=8tOSC, A/D 转换时间= 204tAD
 	LDI	ADCPORT,	0111B	;使用AN0 ~ AN6
 	LDI	ADCCHN,		00H	;选择AN0
 	ORIM 	ADCCFG,		1000B 	;启动A/D 转换
 
+	;PWM初始化
+	LDI	PWMC0,		0001B	;PWM0 Clock = tosc = 4M
+	LDI	PWMP00,		0DH	;周期为125个PWM0 Clock
+	LDI	PWMP01,		07H	
+	LDI	PWMD00,		00H	;无微调
+	LDI	PWMD01,		0EH	;占空比为50%
+	LDI	PWMD02,		03H	
+
+	LDI	PWMC1,		0000B	;PWM0 Clock = tosc = 4M
+	LDI	PWMP10,		0DH	;周期为125个PWM0 Clock
+	LDI	PWMP11,		07H	
+	LDI	PWMD10,		00H	;无微调
+	LDI	PWMD11,		0EH	;占空比为50%
+	LDI	PWMD12,		03H
+
+
 	;按键相关
 	LDI	CNT0_496MS,	0DH	;初始化496ms 计数器,496 = 8 * 62
 	LDI	CNT0_496MS,	03H	;初始化496ms 计数器
 	LDI	BTN_PRE_STA,	01H	;初始化上一次没有按键
+
+	;状态相关
+	LDI	NORMAL_STA,	01H	;初始化为"主电"
+	LDI	ABNORMAL_STA,	00H	;无任何异常状态
 	
 ;--------------------------------------
 MAIN_PRE:
@@ -541,9 +590,30 @@ MAIN_PRE:
 	LDI 	IE,		1100B 	;打开ADC,Timer0 中断
 
 MAIN:
-	CALL	KEY_CHECK_PROCESS
+	CALL	KEY_CHECK_PROCESS	;按键扫描，输出"模拟停电","手动月检","手动年检","关断应急输出"等标志位
 
-	ADI 	F_TIME,		0001B
+CHECK_PWR_CUT:
+	ADI	SIMULATE_STA,	0001B	;检查"模拟停电"标志位
+	BA0	CHECK_MONTH_CHK		
+	CALL	SIM_PWR_CUT
+
+CHECK_MONTH_CHK:
+	ADI	SIMULATE_STA,	0010B	;检查"手动月检"标志位
+	BA0	CHECK_YEAR_CHK
+	CALL	SIM_MONTH_CHK
+
+CHECK_YEAR_CHK:
+	ADI	SIMULATE_STA,	0100B	;检查"手动年检"标志位
+	BA0	CHECK_DIS_PWR_OUT
+	CALL	SIM_YEAR_CHK
+
+CHECK_DIS_PWR_OUT
+	ADI	SIMULATE_STA,	1000B	;检查"关断应急输出"标志位
+	;BA0	XXXXXXXXXXXX
+	CALL	DIS_PWR_OUT
+	
+
+	;ADI 	F_TIME,		0001B
 	;BA0 	HALTMODE 		;未到1s,跳转
 	
 	ADI 	F_TIME,		0001B
@@ -566,13 +636,42 @@ HALTMODE:
 
 
 ;***********************************************************
+; 模拟停电处理部分
+;***********************************************************
+SIM_PWR_CUT:
+	NOP
+	RTNI
+
+;***********************************************************
+; 手动月检处理部分
+;***********************************************************
+SIM_MONTH_CHK:
+
+	RTNI
+
+;***********************************************************
+; 手动年检处理部分
+;***********************************************************
+SIM_YEAR_CHK:
+
+	RTNI
+
+;***********************************************************
+; 关断应急输出
+;***********************************************************
+DIS_PWR_OUT:
+
+	RTNI
+	
+
+;***********************************************************
 ; 按键扫描及处理部分
 ;***********************************************************
 KEY_CHECK_PROCESS:
 	LDI 	PDCR,		1110B 	;设置PD.0 为输入，PD.3 为输出
 	
 KEY_CHECK:
-	ADI	F_BUTTON,	0001B	;
+	ADI	F_BUTTON,	0001B	;检查496MS标志位
 	BA0	NOT_CHECK
 
 	
@@ -621,9 +720,8 @@ MORE_7S:
 	ORIM	SIMULATE_STA,	0001B	;进入"关断应急输出"状态
 	JMP	RELEASED_OVER	
 LESS_3S:
-	ORIM	SIMULATE_STA,	0001B	;进入"模拟停电"状态
+	ANDIM	SIMULATE_STA,	1110B	;进入退出"模拟停电"状态
 	JMP	RELEASED_OVER
-
 LESS_5S:
 	ORIM	SIMULATE_STA,	0010B	;进入"手动月检"状态
 	JMP	RELEASED_OVER
@@ -635,20 +733,33 @@ RELEASED_OVER:
 	LDI	BTN_PRESS_CNT,	00H	;将BTN_PRESS_CNT 清0
 	JMP	KEY_CHECK_PROCESS_OVER
 
+
 KEY_PRESSED:
+	SBI	BTN_PRESS_CNT,	06H	
+	BC	MORE_3S			;按键持续时长大于3S, 6.04 * 496ms = 3s
+	ORIM	SIMULATE_STA,	0001B	;按键持续时长小于3S, 进入"模拟停电"状态
+	JMP	CNT_ADD_1
+	
+MORE_3S:
+	ANDIM	SIMULATE_STA,	1110B	;按键持续时长大于3S, 退出"模拟停电"状态
+
+CNT_ADD_1:	
 	SBI	BTN_PRESS_CNT,  0FH	;比较BTN_PRESS_CNT 与 0x0F 的大小
 	BC	KEY_CHECK_PROCESS_OVER	;如果BTN_PRESS_CNT已经累加至0x0F，则不再累加
-	ADI	BTN_PRESS_CNT,	01H	;496MS计时次数加1
+	ADIM	BTN_PRESS_CNT,	01H	;496MS计时次数加1
 	JMP 	KEY_CHECK_PROCESS_OVER
 	
 KEY_ERROR: 				;错误键值处理
+	LDI	BTN_PRE_STA,	0001H
+	LDI	BTN_PRESS_CNT,	00H
+
 	JMP 	KEY_CHECK_PROCESS_OVER
 	
 KEY_CHECK_PROCESS_OVER: 		;按键扫描及处理结束，返回
 	ANDIM	TEMP,		0001H	;
 	STA	BTN_PRE_STA		;TEMP -> BTN_PRE_STA
 	
-	ANDIM	F_BUTTON,	1110B	;
+	ANDIM	F_BUTTON,	1110B	;清496MS标志位
 	
 NOT_CHECK:	
 	RTNI
