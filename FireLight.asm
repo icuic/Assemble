@@ -118,8 +118,9 @@ HOUR_CNT2	EQU	3EH
 MONTH_CNT	EQU	3FH		;MONTH_CNT0/1 以月为单位计时
 					;当数值达到1年时，即12(0CH)月时，，同时置F_TIME.2，自身清零。
 
-TEMP_SUM_CY	EQU	40H		;子程序参数临时变量
-
+TEMP_SUM_CY	EQU	40H		;AD子程序参数临时变量
+FLAG_OCCUPIED	EQU	41H		;bit0-3=1时分别表示CHN0、1、6、7的转换结果(CHN0_FINAL_RET1等)正被前台使用,
+					;此时ADC中断不能修改这些数据。	
 
 
 ;按键相关寄存器
@@ -980,6 +981,9 @@ DELAY_5MS_LOOP:
 ; 描述: 防脉冲平均滤波法（N=4，去一个最大值和一个最小值，剩下两个求平均值）
 ;*******************************************
 CAL_CHN0_ADCDATA:
+	ADD	FLAG_OCCUPIED,		0001B
+	BA0	CAL_CHN0_AD_MIN01
+	JMP	CAL_CHN0_ADCDATA_END		;正在使用转换结果
 
 ;----------------------------
 ;寻找最小值
@@ -1267,6 +1271,9 @@ CAL_CHN0_ADCDATA_END:
 ; 描述: 防脉冲平均滤波法（N=4，去一个最大值和一个最小值，剩下两个求平均值）
 ;*******************************************
 CAL_CHN1_ADCDATA:
+	ADD	FLAG_OCCUPIED,		0010B
+	BA1	CAL_CHN1_AD_MIN01
+	JMP	CAL_CHN1_ADCDATA_END		;正在使用转换结果
 
 ;----------------------------
 ;寻找最小值
@@ -1555,7 +1562,10 @@ CAL_CHN1_ADCDATA_END:
 ; 描述: 防脉冲平均滤波法（N=4，去一个最大值和一个最小值，剩下两个求平均值）
 ;*******************************************
 CAL_CHN6_ADCDATA:
-
+	ADD	FLAG_OCCUPIED,		0100B
+	BA2	CAL_CHN6_AD_MIN01
+	JMP	CAL_CHN6_ADCDATA_END		;正在使用转换结果
+	
 ;----------------------------
 ;寻找最小值
 CAL_CHN6_AD_MIN01:	
@@ -1843,6 +1853,9 @@ CAL_CHN6_ADCDATA_END:
 ; 描述: 防脉冲平均滤波法（N=4，去一个最大值和一个最小值，剩下两个求平均值）
 ;*******************************************
 CAL_CHN7_ADCDATA:
+	ADD	FLAG_OCCUPIED,		1000B
+	BA3	CAL_CHN7_AD_MIN01
+	JMP	CAL_CHN7_ADCDATA_END		;正在使用转换结果
 
 ;----------------------------
 ;寻找最小值
