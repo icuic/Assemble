@@ -122,6 +122,27 @@ TEMP_SUM_CY	EQU	40H		;AD子程序参数临时变量
 FLAG_OCCUPIED	EQU	41H		;bit0-3=1时分别表示CHN0、1、6、7的转换结果(CHN0_FINAL_RET1等)正被前台使用,
 					;此时ADC中断不能修改这些数据。	
 
+FLAG_TYPE	EQU	42H		;bit0 = 1表示已经完成灯具类型选择(PORTB.3/AN7),此位为1后不再需要对AN7进行AD采样
+
+
+CMP_MIN_PWR0	EQU	43H		;上电自检时，灯具电源最小电压值
+CMP_MIN_PWR1	EQU	44H		;
+
+CMP_TYPE00	EQU	45H		;灯具类型门限0
+CMP_TYPE01	EQU	46H		;
+
+CMP_TYPE10	EQU	47H		;灯具类型门限1
+CMP_TYPE11	EQU	48H		;
+
+CMP_TYPE20	EQU	49H		;灯具类型门限2
+CMP_TYPE21	EQU	4AH		;
+
+LIGHT_TYPE	EQU	4BH		;灯具类型
+					;=0, 锂电池，常亮型
+					;=1, 锂电池，常灭型
+					;=2, 镍镉电池，常亮型
+					;=3, 镍镉电池，常灭型
+
 
 ;按键相关寄存器
 DELAY_TIMER2	EQU	71H		;延时子程序使用
@@ -622,6 +643,9 @@ NEXT_CHN6:
 	JMP	ADC_ISP_END
 
 NEXT_CHN7:
+	LDA	FLAG_TYPE
+	BA0	NEXT_CHN0		;若FLAG_TYPE的bit0=1，则表示已完成灯具类型选择，此时不再需要对AN7进行采样。
+	
 	LDI	ADCCHN,		07H	;设定为CHN7
 ;----------------------------------------------------------------	
 
@@ -639,17 +663,9 @@ ADC_ISP_END:
 ;*****************************************************
 RESET:
 	NOP	
+
 	
-	;LDI	70H,		07H
-	;LDI	71H,		01H
-	
-LOOP:	
-	;SBIM	70H, 		01H
-	;LDI	TBR,		00H
-	;SBCM	71H
-	;BC 	LOOP
-	
-	LDI 	IE,		0000B
+	LDI 	IE,		0000B	;关闭所有中断
 	
  	NOP
 	NOP
@@ -731,6 +747,7 @@ SYSTEM_INITIAL:
 	LDI 	PECR,		0FH 	;设置PortE 作为输出口
 
 	;ADC初始化
+	;tosc = 1/4M = 0.25us, tAD = 8tosc = 2us, 一次A/D 转换时间 = 204tAD = 408 us.
 	LDI 	PACR,		0000B 	;设置PortA0/1 作为输入口
 	LDI 	PBCR,		0000B 	;设置PortB2/3 作为输入口
 	LDI 	ADCCTL,		0001B 	;选择内部参考电压VDD，使能ADC
@@ -763,6 +780,21 @@ SYSTEM_INITIAL:
 	;状态相关
 	LDI	NORMAL_STA,	01H	;初始化为"主电"
 	LDI	ABNORMAL_STA,	00H	;无任何异常状态
+
+	;门限值
+	LDI	CMP_MIN_PWR0,	0FH	;最小上电电压
+	LDI	CMP_MIN_PWR1,	0FH
+
+	LDI	CMP_TYPE00,	00H	;灯具类型门限0
+	LDI	CMP_TYPE01,	00H
+
+	LDI	CMP_TYPE10,	00H	;灯具类型门限1
+	LDI	CMP_TYPE11,	00H
+
+	LDI	CMP_TYPE20,	00H	;灯具类型门限2
+	LDI	CMP_TYPE21,	00H
+
+
 	
 ;--------------------------------------
 MAIN_PRE:
@@ -770,7 +802,30 @@ MAIN_PRE:
 	LDI 	IE,		1100B 	;打开ADC,Timer0 中断
 
 WAIT_AD_RESULT:
+	;一个通道采样4个数据，去掉最小与最大值，将余下的2个数据平均后得到最终结果。
+	;上述过程耗时约408us * 4 = 2ms
+	;根据以上推断，四个通道各得出一个最终结果需耗时 2ms * 4 = 8ms
+
+	;保险起见，此处延时20ms
+	CALL	DELAY_5MS
+	CALL	DELAY_5MS
+	CALL	DELAY_5MS
+	CALL	DELAY_5MS
+
+WAIT_PWR_NML:	
+	ORIM	FLAG_OCCUPIED,	0100B	;锁定通道6最终结果
+
+	LDI	CHN6_FINAL_RET1,01H
+	SUB	CMP_MIN_PWR0
+	LDI	CHN6_FINAL_RET2,01H
+	SBC	CMP_MIN_PWR1
+
+	ANDIM	FLAG_OCCUPIED,	1011B	;释放对通道6最终结果的锁定
 	
+	BNC	WAIT_AD_RESULT		;如果未达到最小上电电压，则一直等待电压升至最小上电电压之上。
+
+	CALL	CHK_TYPE
+
 
 MAIN:
 
@@ -828,6 +883,53 @@ HALTMODE:
 
 	NOP
 	NOP
+
+;***********************************************************
+; 检查灯具类型
+; 输入: CHN7_FINAL_RET1, CHN7_FINAL_RET2
+; 输出: LIGHT_TYPE
+;***********************************************************
+CHK_TYPE:
+	ORIM	FLAG_OCCUPIED,	1000B	;锁定通道7最终结果
+
+	LDI	CHN7_FINAL_RET1,01H	;和门限0比较
+	SUB	CMP_TYPE00
+	LDI	CHN7_FINAL_RET2,01H
+	SBC	CMP_TYPE01
+	BNC	LI_ON			;
+
+	LDI	CHN7_FINAL_RET1,01H	;和门限1比较
+	SUB	CMP_TYPE10
+	LDI	CHN7_FINAL_RET2,01H
+	SBC	CMP_TYPE11
+	BNC	LI_OFF			;
+
+	LDI	CHN7_FINAL_RET1,01H	;和门限2比较
+	SUB	CMP_TYPE20
+	LDI	CHN7_FINAL_RET2,01H
+	SBC	CMP_TYPE21
+	BNC	NI_ON			;
+
+NI_OFF:
+	LDI	LIGHT_TYPE,	03H
+	JMP	CHK_TYPE_END
+	
+LI_ON:
+	LDI	LIGHT_TYPE,	00H
+	JMP	CHK_TYPE_END
+	
+LI_OFF:
+	LDI	LIGHT_TYPE,	01H
+	JMP	CHK_TYPE_END
+	
+NI_ON:
+	LDI	LIGHT_TYPE,	02H
+	
+CHK_TYPE_END:
+	ANDIM	FLAG_OCCUPIED,	0111B	;释放对通道7最终结果的锁定
+	ORIM	FLAG_TYPE,	0001B	;不再对通道7进行采样
+	
+	RTNI
 
 
 ;***********************************************************
@@ -981,7 +1083,7 @@ DELAY_5MS_LOOP:
 ; 描述: 防脉冲平均滤波法（N=4，去一个最大值和一个最小值，剩下两个求平均值）
 ;*******************************************
 CAL_CHN0_ADCDATA:
-	ADD	FLAG_OCCUPIED,		0001B
+	ADI	FLAG_OCCUPIED,		0001B
 	BA0	CAL_CHN0_AD_MIN01
 	JMP	CAL_CHN0_ADCDATA_END		;正在使用转换结果
 
@@ -1271,7 +1373,7 @@ CAL_CHN0_ADCDATA_END:
 ; 描述: 防脉冲平均滤波法（N=4，去一个最大值和一个最小值，剩下两个求平均值）
 ;*******************************************
 CAL_CHN1_ADCDATA:
-	ADD	FLAG_OCCUPIED,		0010B
+	ADI	FLAG_OCCUPIED,		0010B
 	BA1	CAL_CHN1_AD_MIN01
 	JMP	CAL_CHN1_ADCDATA_END		;正在使用转换结果
 
@@ -1562,7 +1664,7 @@ CAL_CHN1_ADCDATA_END:
 ; 描述: 防脉冲平均滤波法（N=4，去一个最大值和一个最小值，剩下两个求平均值）
 ;*******************************************
 CAL_CHN6_ADCDATA:
-	ADD	FLAG_OCCUPIED,		0100B
+	ADI	FLAG_OCCUPIED,		0100B
 	BA2	CAL_CHN6_AD_MIN01
 	JMP	CAL_CHN6_ADCDATA_END		;正在使用转换结果
 	
@@ -1853,7 +1955,7 @@ CAL_CHN6_ADCDATA_END:
 ; 描述: 防脉冲平均滤波法（N=4，去一个最大值和一个最小值，剩下两个求平均值）
 ;*******************************************
 CAL_CHN7_ADCDATA:
-	ADD	FLAG_OCCUPIED,		1000B
+	ADI	FLAG_OCCUPIED,		1000B
 	BA3	CAL_CHN7_AD_MIN01
 	JMP	CAL_CHN7_ADCDATA_END		;正在使用转换结果
 
