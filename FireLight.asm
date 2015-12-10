@@ -143,6 +143,38 @@ LIGHT_TYPE	EQU	4BH		;灯具类型
 					;=2, 镍镉电池，常亮型
 					;=3, 镍镉电池，常灭型
 
+CMP_SUPPLY0	EQU	4CH		;检测到电源电压小于此数值时，开始应急放电
+CMP_SUPPLY1	EQU	4DH
+
+FLAG_EMERGENCY	EQU	4EH		;bit0 = 1表示已打开应急放电功能
+					;bit1 = 1表示1s已到
+					
+CNT0_EMERGENCY	EQU	4FH		;对应急时长计时，单位s
+CNT1_EMERGENCY	EQU	50H
+CNT2_EMERGENCY	EQU	51H
+
+CMP_EXIT_EMER0	EQU	52H		;检测到电池电压小于此数值时，应该关闭应急放电功能
+CMP_EXIT_EMER1	EQU	53H
+
+CMP_BAT_OPEN0	EQU	54H		;检测到电池电压大于此数值时，视为电池充电回路开路
+CMP_BAT_OPEN1	EQU	55H		;检测到电池电压大于此数值时，视为电池充电回路开路
+
+CMP_BAT_FULL0	EQU	56H		;检测到电池电压大于此数值时，视为电池已充满
+CMP_BAT_FULL1	EQU	57H		;检测到电池电压大于此数值时，视为电池已充满
+
+CMP_BAT_CHARGE0	EQU	58H		;检测到电池电压小于此数值时，视为电池已充满
+CMP_BAT_CHARGE1	EQU	59H		;检测到电池电压小于此数值时，视为电池已充满
+
+
+
+BAT_STATE	EQU	58H		;bit0 = 0, 表示充电回路未开路；bit0 = 1, 表示充电回路开路
+					;bit1 = 0, 表示电池未充满；bit1 = 1, 表示电池已充满
+					;bit2 = 0, 表示电池还不需要充电；bit2 = 0, 表示电池需要充电
+					;bit3 = 1, 表示电池电压过低，不能再继续应急放电了
+
+
+
+
 
 ;按键相关寄存器
 DELAY_TIMER2	EQU	71H		;延时子程序使用
@@ -309,6 +341,7 @@ J1MS:
 	LDI 	CNT1,		07H 	;重置1s 计数器
 	
 	ORIM 	F_TIME,		0001B 	;设置 "1s 到"标志
+	ORIM	FLAG_EMERGENCY,	0010B	;为应急功能提供 "1s 到"标志
 	;--------------------------------------------------------------------------
 	
 
@@ -801,6 +834,10 @@ MAIN_PRE:
 	LDI 	IRQ,		00H
 	LDI 	IE,		1100B 	;打开ADC,Timer0 中断
 
+
+;--------------------------------------
+;检查供电是否正常
+;--------------------------------------
 WAIT_AD_RESULT:
 	;一个通道采样4个数据，去掉最小与最大值，将余下的2个数据平均后得到最终结果。
 	;上述过程耗时约408us * 4 = 2ms
@@ -824,6 +861,10 @@ WAIT_PWR_NML:
 	
 	BNC	WAIT_AD_RESULT		;如果未达到最小上电电压，则一直等待电压升至最小上电电压之上。
 
+
+;--------------------------------------
+;判定灯具类型
+;--------------------------------------
 	CALL	CHK_TYPE
 
 
@@ -838,6 +879,115 @@ MAIN:
 
 	;LDI	PWMD01,		0DH
 	;LDI	PWMD02,		07H
+
+;--------------------------------------------------------------------------------------
+;检查供电情况，如若停电，则打开应急功能。同时检查电池电压，如果电池耗尽，则停止应急
+;--------------------------------------------------------------------------------------
+CHK_PWR_SUPPLY:				;检查供电是否正常
+	ORIM	FLAG_OCCUPIED,	0100B	;锁定通道6最终结果
+
+	LDI	CHN6_FINAL_RET1,01H
+	SUB	CMP_SUPPLY0
+	LDI	CHN6_FINAL_RET2,01H
+	SBC	CMP_SUPPLY1
+
+	ANDIM	FLAG_OCCUPIED,	1011B	;释放对通道6最终结果的锁定
+	
+	BNC	CHK_BATTERY		;如果供电正常,则检测电池电压
+
+	;驱动应急引脚
+	LDA	FLAG_EMERGENCY
+	BA0	EMERGENCY_CNT		;已打开应急放电功能
+	ORIM	FLAG_EMERGENCY,	0001B	;置标志位，表明已打开应急放电功能
+	CALL	EMERGENCY_ENABLE
+
+EMERGENCY_CNT:
+	ADI	FLAG_EMERGENCY,	0010B	;每秒检查一次
+	BA1	EMERGENCY_WAIT
+
+	SBI	CNT2_EMERGENCY,	08H	;如果CNT达到0x800，则表示已应急放电0x800s = 2048s > 30min
+	BC	EMERGENCY_BATTERY	;此时无需再对应急放电时长计时
+
+	ADIM	CNT0_EMERGENCY,	01H
+	LDI	TBR,		00H
+	ADCM	CNT1_EMERGENCY
+	LDI	TBR,		00H
+	ADCM	CNT2_EMERGENCY
+
+EMERGENCY_BATTERY:			;检查电池是否已经耗尽
+	ORIM	FLAG_OCCUPIED,	0010B	;锁定通道1最终结果
+
+	LDI	CHN1_FINAL_RET1,01H
+	SUB	CMP_EXIT_EMER0
+	LDI	CHN1_FINAL_RET2,01H
+	SBC	CMP_EXIT_EMER1
+
+	ANDIM	FLAG_OCCUPIED,	1101B	;释放对通道1最终结果的锁定
+
+	BC	EMERGENCY_DISABLE	;电池电压过低，停止应急
+
+
+EMERGENCY_WAIT:
+	JMP	CHK_PWR_SUPPLY
+	
+
+;--------------------------------------------------------------------------------------
+;此时供电正常，检查电池电压。
+;--------------------------------------------------------------------------------------
+CHK_BATTERY:
+
+	ORIM	FLAG_OCCUPIED,	0010B	;锁定通道1最终结果
+
+	LDI	CHN1_FINAL_RET1,01H	
+	SUB	CMP_BAT_OPEN0		;判断电池是否开路
+	LDI	CHN1_FINAL_RET2,01H
+	SBC	CMP_BAT_OPEN1
+	BNC	BAT_OPEN		;AD转换结果大于1.56V，电池开路
+	ANDIM	BAT_STATE,	1110B	;清除充电回路开路标志位
+
+	LDI	CHN1_FINAL_RET1,01H	
+	SUB	CMP_BAT_FULL0		;判断电池是否充满
+	LDI	CHN1_FINAL_RET2,01H
+	SBC	CMP_BAT_FULL1
+	BNC	BAT_FULL		;AD转换结果大于1.44V，电池开路
+	ANDIM	BAT_STATE,	1101B	;清除电池已充满标志位
+
+	LDI	CHN1_FINAL_RET1,01H	
+	SUB	CMP_BAT_CHARGE0		;判断电池是否过低，需要充电了
+	LDI	CHN1_FINAL_RET2,01H
+	SBC	CMP_BAT_CHARGE1
+	BNC	BAT_NEED_CHARGE		;AD转换结果小于1.35V，电池需要重新充电
+	ANDIM	BAT_STATE,	0100B	;清除电池需要重新充电标志位
+
+
+BAT_OPEN:
+	ORIM	BAT_STATE,	0001B	;置充电回路开路标志位
+	JMP	CHK_BATTERY_END
+
+BAT_FULL:
+	ORIM	BAT_STATE,	0010B	;置电池已充满标志位
+	JMP	CHK_BATTERY_END
+
+BAT_NEED_CHARGE:
+	ORIM	BAT_STATE,	0100B	;置电池需要重新充电标志位
+	JMP	CHK_BATTERY_END
+
+CHK_BATTERY_END:
+	ANDIM	FLAG_OCCUPIED,	1101B	;释放对通道1最终结果的锁定
+
+
+;--------------------------------------------------------------------------------------
+;根据电池电压检测结果，做相应处理
+;--------------------------------------------------------------------------------------
+
+
+
+
+
+
+
+
+
 
 KEY_CHK:
 	CALL	KEY_CHECK_PROCESS	;按键扫描，输出"模拟停电","手动月检","手动年检","关断应急输出"等标志位
@@ -883,6 +1033,8 @@ HALTMODE:
 
 	NOP
 	NOP
+
+
 
 ;***********************************************************
 ; 检查灯具类型
@@ -2239,6 +2391,29 @@ CAL_CHN7_AD_DIV:
 CAL_CHN7_ADCDATA_END:	
 
 	RTNI
+
+;***********************************************************
+; 通过PWM0输出频率为32KHZ，占空比为50%的方波，以此驱动应急电路
+;***********************************************************
+EMERGENCY_ENABLE:
+	LDI	PWMC0,		0000B	;PWM0 Clock = tosc = 4M
+	LDI	PWMP00,		0DH	;周期为125个PWM0 Clock
+	LDI	PWMP01,		07H	
+	LDI	PWMD00,		00H	;无微调
+	LDI	PWMD01,		0EH	;占空比为50%
+	LDI	PWMD02,		03H
+	ORIM	PWMC0,		0001B	;使能PWM0输出
+
+	RTNI
+
+;-----------------------------------------------------------
+;禁能PWM0，关闭应急功能
+;-----------------------------------------------------------
+EMERGENCY_DISABLE:
+	LDI	PWMC0,		0000B	;禁能PWM0
+
+	RTNI
+
 
 	END
 
